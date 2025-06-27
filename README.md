@@ -5,7 +5,7 @@ This project classifies waste into:
 - 🌱 Biodegradable
 - 🗑️ Trash
 
-...using **VGG16 + Transfer Learning** and a simple **Flask web app** for real-time prediction.
+...using  **Transfer Learning** and a simple **Flask web app** for real-time prediction.
 
 ---
 
@@ -13,9 +13,9 @@ This project classifies waste into:
 
 - Python
 - TensorFlow & Keras
-- Transfer Learning (VGG16)
+- Transfer Learning 
 - Flask
-- HTML (UI)
+- HTML 
 - Pillow for image handling
 
 ---
