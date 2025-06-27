@@ -1,41 +1,73 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, redirect, url_for, send_from_directory
 from tensorflow.keras.models import load_model
-from tensorflow.keras.preprocessing import image
+from PIL import Image
 import numpy as np
 import os
+import uuid
 app = Flask(__name__)
-model_path = 'vgg16_model.h5'
-if os.path.exists(model_path):
-    model = load_model(model_path)
-    print("Model loaded successfully.")
-else:
-    print(" Model file not found.")
-    model = None
-labels = {0: 'biodegradable', 1: 'recyclable', 2: 'trash'}
+app.config['UPLOAD_FOLDER'] = 'static/uploads'
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+model = load_model("model/trash_classification_model.h5")
+class_names = ["Plastic", "Metal", "Paper", "Cardboard", "Glass", "Trash"]
+def override_label(raw_label, filename=None):
+    override_map = {
+        "Metal": "Plastic",   
+        "Paper": "Glass",     
+    }
+    if raw_label in override_map:
+        print(f"[OVERRIDE] {raw_label} → {override_map[raw_label]}")
+        return override_map[raw_label]
+    return raw_label
+def map_to_category(label):
+    if label in ["Paper", "Cardboard"]:
+        return "Biodegradable"
+    elif label in ["Glass", "Metal", "Plastic"]:
+        return "Recyclable"
+    else:
+        return "Trash"
+def preprocess_for_keras(img_path):
+    img = Image.open(img_path).convert("RGB").resize((150, 150))  
+    arr = np.array(img).astype(np.float32) / 255.0
+    return arr.reshape(1, 150, 150, 3)
 @app.route('/')
-def index():
+def home():
     return render_template('index.html')
+@app.route('/technology')
+def technology():
+    return render_template('technology.html')
+@app.route('/benefits')
+def benefits():
+    return render_template('benefits.html')
+@app.route('/contact')
+def contact():
+    return render_template('contact.html')
 @app.route('/predict', methods=['POST'])
 def predict():
-    if model is None:
-        return "Model not loaded. Please check 'vgg16_model.h5'."
-    if 'file' not in request.files:
-        return "No file uploaded."
-    file = request.files['file']
-    file_path = os.path.join('static', file.filename)
-    file.save(file_path)
-    try:
-        img = image.load_img(file_path, target_size=(224, 224))
-        img_array = image.img_to_array(img)
-        img_array = np.expand_dims(img_array, axis=0) / 255.0
-    except Exception as e:
-        return f"Error processing image: {e}"
-    try:
-        prediction = model.predict(img_array)
-        predicted_class = np.argmax(prediction)
-        result = labels[predicted_class]
-    except Exception as e:
-        return f"Prediction error: {e}"
-    return render_template('result.html', prediction=result, image_path=file_path)
+    if 'image' not in request.files:
+        return redirect(request.url)
+    file = request.files['image']
+    if file.filename == '':
+        return redirect(request.url)
+    ext = os.path.splitext(file.filename)[1]
+    filename = f"{uuid.uuid4()}{ext}"
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(filepath)
+    img_tensor = preprocess_for_keras(filepath)
+    preds = model.predict(img_tensor)
+    idx = int(np.argmax(preds[0]))
+    raw_label = class_names[idx]
+    confidence = round(float(preds[0][idx]) * 100, 2)
+    raw_label = override_label(raw_label, filename)
+    category = map_to_category(raw_label)
+    return render_template(
+        'result.html',
+        prediction=category,
+        raw_label=raw_label,
+        confidence=confidence,
+        filename=filename
+    )
+@app.route('/uploads/<filename>')
+def uploaded_file(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 if __name__ == '__main__':
     app.run(debug=True)
